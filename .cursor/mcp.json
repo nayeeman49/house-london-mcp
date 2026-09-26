@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "forest-research": {
+      "url": "https://mcp.exploreforest.ai/mcp",
+      "auth": {
+        "CLIENT_ID": "TCcFnCSLUaPM881T6DrQmA",
+        "scopes": ["mcp"]
+      }
+    },
+    "london-ckan-open-data": {
+      "url": "https://ckan-mcp-server.andy-pr.workers.dev/mcp"
+    },
+    "local-housing-intent-engine": {
+      "command": "/Users/user/Documents/Projects/house-london-mcp/venv/bin/python",
+      "args": [
+        "/Users/user/Documents/Projects/house-london-mcp/src/server.py"
+      ]
+    }
+  }
+}

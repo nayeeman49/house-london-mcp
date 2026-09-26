@@ -1,0 +1,41 @@
+---
+description: System instructions and architectural rules for the House London MCP Housing Engine
+globs: **/*.py, **/*.sql, **/*.parquet
+alwaysApply: true
+---
+
+# Housing Intent Engine - Development Rules
+
+## Tech Stack
+- Language: Python 3.11+ (FastMCP framework, `mcp<2`)
+- Query Engine: DuckDB / Polars (optimized for local Parquet processing)
+- Transport: Local stdio MCP server
+
+## Primary Datasets & Connectors
+1. Forest Research MCP (`https://mcp.exploreforest.ai/mcp`) - Opinion & sentiment analysis
+2. Foundations Planning Parquet (`https://foreman.house-london.uk/download/parquet/`) - Decision delays, doc count, approval rates
+3. Foundations API (`https://foreman.house-london.uk/api/v1/applications/`) - Paginated JSON, same data as Parquet
+4. WhereToBuild (`data/wheretobuild.parquet`) - Ward/MSOA level housing gap and tightness (event-only, do not publish)
+5. UK PlanIt API (`https://www.planit.org.uk/api/`) - Case-level planning application search
+6. Planning Data API (`https://www.planning.data.gov.uk/`) - Conservation areas, green belt, brownfield sites
+
+## Foundations column names (do not guess)
+- Borough: `area_name` (not `borough`)
+- Decision lag: `days_to_decision` (not `decision_days`)
+- Documents: `n_documents` (not `document_count`)
+- Comments: `n_comments`
+- Dwellings: `n_dwellings`
+- Outcome: `status` (`Permitted`, `Rejected`, etc.)
+- Location: `lat`, `lng`, `ward_name`
+
+## Data Joining Logic
+- Join spatial datasets using ONS ward codes or `area_name` / LPA names.
+- Prefer coordinate joins over application reference joins (references fail often across datasets).
+- Standardize geographic metrics using ONS Open Geography lookups.
+
+## Key Rules & Constraints
+- Prefer a local copy at `data/foundations.parquet` for speed; remote HTTP Parquet works but is slow on first query.
+- ALWAYS use DuckDB for querying Parquet. Do not load the full dataset into pandas in memory.
+- Wrap MCP tools using `@mcp.tool()` from `mcp.server.fastmcp`.
+- Return structured dictionaries with quantifiable metrics (`avg_delay_days`, `avg_document_count`, `approval_rate`, etc.).
+- Be honest about data limits: Foundations has applications and consultation intensity, not commencements/completions (those are in Planning London Datahub).

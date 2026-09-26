@@ -1,0 +1,15 @@
+venv
+__pycache__
+*.pyc
+.DS_Store
+.git
+.gitignore
+data/*.parquet
+data/*.csv
+.env
+.env.*
+web/.next
+web/node_modules
+web/.env.local
+*.md
+.cursor

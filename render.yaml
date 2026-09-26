@@ -1,0 +1,23 @@
+# Render blueprint — https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: housedata-engine
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    healthCheckPath: /
+    envVars:
+      - key: HOUSING_PROJECT_ROOT
+        value: /app
+      - key: MCP_PYTHON
+        value: /app/venv/bin/python
+      - key: MCP_SERVER
+        value: /app/src/server.py
+      - key: USE_MCP_ONLY
+        value: "true"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: NEXT_PUBLIC_MAPBOX_TOKEN
+        sync: false

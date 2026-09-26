@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.env.*
+!.env.local.example
+web/.env.local
+web/node_modules/
+web/.next/
+data/*.parquet
+data/*.csv
+data/*.xlsx

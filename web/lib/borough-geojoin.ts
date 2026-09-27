@@ -21,6 +21,7 @@ export type BoroughGeoFeature = GeoJSON.Feature<
     metric_norm: number;
     color: string;
     height: number;
+    city_mass_height: number;
   }
 >;
 
@@ -30,7 +31,7 @@ export function buildBoroughGeoJson(
   metric: MapMetricId,
   metricInvert: boolean | undefined,
   colorForValue: (v: number | null, min: number, max: number, invert?: boolean) => string,
-  elevated = true,
+  is3d = false,
 ): GeoJSON.FeatureCollection {
   const byName = new Map(boroughs.map((b) => [b.borough, b]));
   const values = boroughs
@@ -51,7 +52,7 @@ export function buildBoroughGeoJson(
     // Red side of the legend = taller blocks; curve exaggerates high-severity boroughs
     const severityNorm = metricInvert ? metric_norm : 1 - metric_norm;
     const curved = Math.pow(Math.max(severityNorm, 0), 0.35);
-    const height = elevated ? 1200 + curved * 22000 : 0;
+    const city_mass_height = is3d ? 140 + curved * 360 : 0;
 
     return {
       type: "Feature",
@@ -62,7 +63,8 @@ export function buildBoroughGeoJson(
         metric_value,
         metric_norm,
         color,
-        height,
+        height: city_mass_height,
+        city_mass_height,
       },
     };
   });

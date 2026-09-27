@@ -1280,6 +1280,28 @@ body {
   color: var(--live);
 }
 
+.map-buildings-hint {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 400;
+  padding: 0.4rem 0.85rem;
+  border-radius: 9999px;
+  border: 1px solid var(--border-strong);
+  background: rgba(10, 10, 10, 0.88);
+  backdrop-filter: blur(8px);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  pointer-events: none;
+  animation: motionFadeIn 0.35s ease-out both;
+}
+
+.map-buildings-hint-live {
+  color: var(--live);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .map-sidebar,
   .map-main {
@@ -1294,6 +1316,97 @@ body {
 .map-main {
   min-height: 480px;
   height: calc(100vh - 12rem);
+}
+
+.map-fullscreen-btn {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 450;
+  padding: 0.4rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid var(--border-strong);
+  background: rgba(10, 10, 10, 0.88);
+  backdrop-filter: blur(8px);
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+
+.map-fullscreen-btn:hover {
+  border-color: var(--live);
+  background: rgba(10, 10, 10, 0.95);
+}
+
+.map-fullscreen-btn:active {
+  transform: scale(0.96);
+}
+
+/* Native Fullscreen API — map fills entire monitor */
+.map-main:fullscreen,
+.map-main:-webkit-full-screen {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  max-width: none;
+  border: none;
+  border-radius: 0;
+  background: #0a0a0a;
+}
+
+/* CSS fallback if Fullscreen API is blocked */
+.map-layout-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: block !important;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  background: #0a0a0a;
+}
+
+.map-layout-fullscreen .map-sidebar,
+.map-layout-fullscreen .map-sidebar-toggle {
+  display: none !important;
+}
+
+.map-layout-fullscreen .map-main {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  border-radius: 0;
+  border: none;
+}
+
+body:has(.map-layout-fullscreen) {
+  overflow: hidden;
+}
+
+body:has(.map-layout-fullscreen) .app-shell {
+  padding: 0 !important;
+  max-width: none !important;
+}
+
+body:has(.map-layout-fullscreen) .app-grid-overlay,
+body:has(.map-layout-fullscreen) .app-vignette {
+  display: none;
+}
+
+body:has(.map-layout-fullscreen) .motion-stagger > .motion-item:nth-child(-n + 2) {
+  display: none !important;
+}
+
+body:has(.map-layout-fullscreen) .motion-stagger > .motion-item:nth-child(3) {
+  transform: none !important;
+  animation: none !important;
+  opacity: 1 !important;
 }
 
 .map-container {

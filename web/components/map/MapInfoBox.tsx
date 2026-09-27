@@ -60,9 +60,11 @@ export function MapInfoBox() {
             <section>
               <h4>2D / 3D view</h4>
               <p>
-                Use the <strong>View</strong> toggle in the sidebar. <strong>3D</strong> raises
-                boroughs by metric severity (red = taller). <strong>2D</strong> is a flat
-                choropleth — same colours, easier to read and pan.
+                Use the <strong>View</strong> toggle. <strong>3D</strong> opens with a high-altitude
+                view of all London — coloured borough blocks plus individual buildings (heights
+                exaggerated when zoomed out). Scroll to zoom in for street-level detail.
+                {" "}
+                <strong>2D</strong> is a flat borough choropleth.
               </p>
             </section>
 

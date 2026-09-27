@@ -65,6 +65,19 @@ type PlanItRecord = {
   link?: string;
 };
 
+function readViewModeFromParams(params: URLSearchParams): "2d" | "3d" {
+  const table = params.get("table");
+  if (table && VALID_TABLES.has(table)) return "2d";
+
+  const explore = params.get("mode");
+  if (explore && VALID_MODES.has(explore)) {
+    const mode = getExplorationMode(explore);
+    if (mode) return applyExplorationMode(mode).viewMode;
+  }
+
+  return params.get("view") === "3d" ? "3d" : "2d";
+}
+
 export function PlanningMap() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -79,7 +92,9 @@ export function PlanningMap() {
   const [appSize, setAppSize] = useState("");
   const [status, setStatus] = useState("");
   const [showPoints, setShowPoints] = useState(true);
-  const [viewMode, setViewMode] = useState<"3d" | "2d">("2d");
+  const [viewMode, setViewMode] = useState<"3d" | "2d">(() =>
+    readViewModeFromParams(searchParams),
+  );
   const [postcode, setPostcode] = useState("");
   const [planitSearch, setPlanitSearch] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -88,6 +103,10 @@ export function PlanningMap() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [explorationModeId, setExplorationModeId] = useState<string | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [cssFullscreen, setCssFullscreen] = useState(false);
+  const cssFullscreenRef = useRef(false);
+  const mapMainRef = useRef<HTMLDivElement>(null);
 
   const activeMetric = MAP_METRICS.find((m) => m.id === metric) ?? MAP_METRICS[0];
   const activeExploreMode = explorationModeId
@@ -130,10 +149,14 @@ export function PlanningMap() {
 
     const table = searchParams.get("table");
     const view = searchParams.get("view");
+    const explore = searchParams.get("mode");
 
     // Problem case maps always open in 2D; plain /map respects ?view=
     if (table && VALID_TABLES.has(table)) {
       setViewMode("2d");
+    } else if (explore && VALID_MODES.has(explore)) {
+      const mode = getExplorationMode(explore);
+      if (mode) setViewMode(applyExplorationMode(mode).viewMode);
     } else if (view === "2d" || view === "3d") {
       setViewMode(view);
     }
@@ -160,7 +183,6 @@ export function PlanningMap() {
 
     setPlanitSearch(searchParams.get("planit") === "true");
 
-    const explore = searchParams.get("mode");
     if (explore && VALID_MODES.has(explore)) {
       const mode = getExplorationMode(explore);
       if (mode) {
@@ -248,6 +270,44 @@ export function PlanningMap() {
     void loadMap();
   }, [loadMap]);
 
+  useEffect(() => {
+    cssFullscreenRef.current = cssFullscreen;
+  }, [cssFullscreen]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const native = document.fullscreenElement === mapMainRef.current;
+      setFullscreen(native || cssFullscreenRef.current);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    const el = mapMainRef.current;
+    if (!el) return;
+
+    if (cssFullscreen) {
+      setCssFullscreen(false);
+      setFullscreen(false);
+      return;
+    }
+
+    if (document.fullscreenElement === el) {
+      await document.exitFullscreen();
+      setFullscreen(false);
+      return;
+    }
+
+    try {
+      await el.requestFullscreen();
+      setFullscreen(true);
+    } catch {
+      setCssFullscreen(true);
+      setFullscreen(true);
+    }
+  }, [cssFullscreen]);
+
   const legend = useMemo(() => {
     const values = boroughs
       .map((b) => {
@@ -267,7 +327,7 @@ export function PlanningMap() {
   }, [boroughs, metric, activeMetric]);
 
   return (
-    <div className="map-layout">
+    <div className={`map-layout ${cssFullscreen ? "map-layout-fullscreen" : ""}`}>
       <button
         type="button"
         className="map-sidebar-toggle lg:hidden"
@@ -304,7 +364,7 @@ export function PlanningMap() {
           <h2 className="font-serif text-xl font-normal mt-1">Map queries</h2>
           <p className="text-xs text-[var(--muted)] mt-1.5 leading-relaxed">
             {viewMode === "3d"
-              ? "3D borough blocks — left-drag to orbit (tilt + spin), right-drag to pan, scroll to zoom."
+              ? "High-altitude 3D view — all London in metric colour; scroll in for street detail."
               : "2D choropleth — borough colour by metric. Pan and zoom as usual."}
           </p>
           <div className="flex flex-wrap gap-1.5 mt-2">
@@ -527,7 +587,7 @@ export function PlanningMap() {
             <p className="text-[10px] text-[var(--muted-dim)]">
               {activeExploreMode?.readMap ??
                 (viewMode === "3d"
-                  ? "Taller red blocks = higher values on this metric"
+                  ? "Building colour = borough value on this metric"
                   : "Red = higher values on this metric (flat choropleth)")}
               {" · "}
               {boroughs.length} boroughs
@@ -539,7 +599,18 @@ export function PlanningMap() {
         )}
       </aside>
 
-      <div className="map-main panel overflow-hidden relative min-h-[420px]">
+      <div
+        ref={mapMainRef}
+        className="map-main panel overflow-hidden relative min-h-[420px]"
+      >
+        <button
+          type="button"
+          className="map-fullscreen-btn"
+          onClick={() => void toggleFullscreen()}
+          aria-pressed={fullscreen}
+        >
+          {fullscreen ? "Exit full screen" : "Full screen"}
+        </button>
         {activeExploreMode ? (
           <div className="map-mode-pill" aria-live="polite">
             <span className="map-mode-pill-emoji">{activeExploreMode.emoji}</span>
@@ -564,6 +635,7 @@ export function PlanningMap() {
           postcodeLookup={postcodeLookup}
           showPoints={showPoints}
           viewMode={viewMode}
+          fullscreen={fullscreen}
         />
       </div>
     </div>

@@ -1,29 +1,43 @@
 import type { Map as MapboxMap } from "mapbox-gl";
+import { isBuildingLayer, removeBuildingLayers } from "./map-buildings";
 
-const OUR_LAYERS = new Set(["borough-extrusion", "borough-fill", "borough-outline"]);
+const OUR_LAYERS = new Set([
+  "borough-extrusion",
+  "borough-fill",
+  "borough-outline",
+  "borough-city-mass",
+]);
 
-/** Toggle borough data layers — extrusion in 3D, flat fill in 2D. */
+export function buildBoroughFillOpacity(
+  is3d: boolean,
+  selectedBorough: string,
+): mapboxgl.ExpressionSpecification | number {
+  if (!is3d) {
+    return selectedBorough
+      ? ["case", ["==", ["get", "borough"], selectedBorough], 0.92, 0.22]
+      : 0.82;
+  }
+
+  // Flat fill hidden in 3D — coloured extrusions carry the metric.
+  return 0;
+}
+
 export function syncBoroughLayers(map: MapboxMap, is3d: boolean) {
   try {
     if (map.getLayer("borough-extrusion")) {
-      map.setLayoutProperty("borough-extrusion", "visibility", is3d ? "visible" : "none");
+      map.setLayoutProperty("borough-extrusion", "visibility", "none");
     }
     if (map.getLayer("borough-fill")) {
-      map.setLayoutProperty("borough-fill", "visibility", is3d ? "none" : "visible");
+      map.setLayoutProperty("borough-fill", "visibility", "visible");
     }
   } catch {
     /* layers not mounted yet */
   }
 }
 
-/** Hide Mapbox 3D buildings, terrain, and hillshade for a flat 2D view. */
-export function applyFlatBasemap(map: MapboxMap) {
-  map.setTerrain(null);
-  syncBoroughLayers(map, false);
-
-  const layers = map.getStyle()?.layers ?? [];
-  for (const layer of layers) {
-    if (OUR_LAYERS.has(layer.id)) continue;
+function hideStyle3dLayers(map: MapboxMap) {
+  for (const layer of map.getStyle()?.layers ?? []) {
+    if (OUR_LAYERS.has(layer.id) || isBuildingLayer(layer.id)) continue;
 
     const is3dLayer =
       layer.type === "fill-extrusion" ||
@@ -35,32 +49,20 @@ export function applyFlatBasemap(map: MapboxMap) {
       try {
         map.setLayoutProperty(layer.id, "visibility", "none");
       } catch {
-        /* layer may not support visibility */
+        /* ignore */
       }
     }
   }
 }
 
-/** Restore default basemap 3D layers when returning to 3D mode. */
+export function applyFlatBasemap(map: MapboxMap) {
+  map.setTerrain(null);
+  syncBoroughLayers(map, false);
+  removeBuildingLayers(map);
+  hideStyle3dLayers(map);
+}
+
 export function apply3dBasemap(map: MapboxMap) {
   syncBoroughLayers(map, true);
-
-  const layers = map.getStyle()?.layers ?? [];
-  for (const layer of layers) {
-    if (OUR_LAYERS.has(layer.id)) continue;
-
-    const is3dLayer =
-      layer.type === "fill-extrusion" ||
-      layer.id.includes("building") ||
-      layer.id.includes("3d") ||
-      layer.type === "hillshade";
-
-    if (is3dLayer) {
-      try {
-        map.setLayoutProperty(layer.id, "visibility", "visible");
-      } catch {
-        /* ignore */
-      }
-    }
-  }
+  hideStyle3dLayers(map);
 }

@@ -4,7 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Map, { Layer, Popup, Source, type MapRef } from "react-map-gl/mapbox";
 import type { Map as MapboxMap, MapLayerMouseEvent } from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { apply3dBasemap, applyFlatBasemap } from "@/lib/map-basemap";
+import { apply3dBasemap, applyFlatBasemap, buildBoroughFillOpacity } from "@/lib/map-basemap";
+import {
+  attachBuildingLayers,
+  syncBuildingColors,
+  type CacheProgress,
+} from "@/lib/map-buildings";
 import {
   attach3dOrbitControls,
   configure3dNavigation,
@@ -32,6 +37,7 @@ type Props = {
   postcodeLookup: MapPostcodeResult | null;
   showPoints: boolean;
   viewMode: "2d" | "3d";
+  fullscreen?: boolean;
 };
 
 type BoroughPopupState = {
@@ -55,12 +61,14 @@ export default function MapCanvas({
   postcodeLookup,
   showPoints,
   viewMode,
+  fullscreen = false,
 }: Props) {
   const is3d = viewMode === "3d";
-  const boroughLayerId = is3d ? "borough-extrusion" : "borough-fill";
+  const boroughLayerId = "borough-fill";
   const showApplicationPoints = showPoints && !is3d;
   const mapRef = useRef<MapRef>(null);
   const [baseGeo, setBaseGeo] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [cacheProgress, setCacheProgress] = useState<CacheProgress | null>(null);
   const [boroughPopup, setBoroughPopup] = useState<BoroughPopupState | null>(null);
   const [hoverApp, setHoverApp] = useState<AppPopupState | null>(null);
   const [selectedApp, setSelectedApp] = useState<AppPopupState | null>(null);
@@ -141,9 +149,7 @@ export default function MapCanvas({
         }
       }
 
-      const boroughFeature = event.features?.find(
-        (f) => f.layer.id === "borough-extrusion" || f.layer.id === "borough-fill",
-      );
+      const boroughFeature = event.features?.find((f) => f.layer.id === "borough-fill");
       if (!boroughFeature?.properties) return;
       const borough = String(boroughFeature.properties.borough);
       const record = boroughs.find((b) => b.borough === borough);
@@ -174,9 +180,7 @@ export default function MapCanvas({
       }
 
       setHoverApp(null);
-      const overBorough = event.features?.some(
-        (f) => f.layer.id === "borough-extrusion" || f.layer.id === "borough-fill",
-      );
+      const overBorough = event.features?.some((f) => f.layer.id === "borough-fill");
       canvas.style.cursor = overBorough ? "pointer" : "";
     },
     [appFromFeature, selectedApp],
@@ -191,7 +195,7 @@ export default function MapCanvas({
       return {
         longitude: postcodeLookup.longitude,
         latitude: postcodeLookup.latitude,
-        zoom: 13.5,
+        zoom: is3d ? 14.5 : 13.5,
       };
     }
     if (selectedBorough) {
@@ -206,21 +210,21 @@ export default function MapCanvas({
         return {
           longitude: coords[0],
           latitude: coords[1],
-          zoom: 11.5,
+          zoom: is3d ? 11.5 : 11.5,
         };
       }
     }
     return {
       longitude: -0.1278,
       latitude: 51.5074,
-      zoom: 10.2,
+      zoom: is3d ? 9.8 : 10.2,
     };
-  }, [postcodeLookup, selectedBorough, boroughGeo]);
+  }, [postcodeLookup, selectedBorough, boroughGeo, is3d]);
 
   const camera = useMemo(
     () => ({
-      pitch: is3d ? 58 : 0,
-      bearing: is3d ? -20 : 0,
+      pitch: is3d ? 52 : 0,
+      bearing: is3d ? -18 : 0,
     }),
     [is3d],
   );
@@ -234,16 +238,18 @@ export default function MapCanvas({
     if (is3d) {
       configure3dNavigation(map);
       detachOrbit = attach3dOrbitControls(map);
+      map.jumpTo({ pitch: camera.pitch, bearing: camera.bearing });
     } else {
       restore2dNavigation(map);
     }
 
-    mapRef.current?.flyTo({
+    map.flyTo({
       center: [flyCenter.longitude, flyCenter.latitude],
       zoom: flyCenter.zoom,
       pitch: camera.pitch,
       bearing: camera.bearing,
-      duration: 900,
+      duration: is3d ? 650 : 400,
+      essential: true,
     });
 
     return () => {
@@ -256,6 +262,13 @@ export default function MapCanvas({
     setHoverApp(null);
   }, [applications, showPoints, is3d]);
 
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    const timer = window.setTimeout(() => map.resize(), 150);
+    return () => window.clearTimeout(timer);
+  }, [fullscreen]);
+
   const configureBasemap = useCallback(
     (map: MapboxMap) => {
       if (is3d) apply3dBasemap(map);
@@ -266,18 +279,50 @@ export default function MapCanvas({
 
   useEffect(() => {
     const map = mapRef.current?.getMap();
-    if (!map) return;
-    if (map.isStyleLoaded()) configureBasemap(map);
-    else map.once("style.load", () => configureBasemap(map));
-  }, [configureBasemap]);
+    if (!map || !boroughGeo) return;
+
+    configureBasemap(map);
+    if (!is3d) setCacheProgress(null);
+
+    const detachBuildings = attachBuildingLayers(
+      map,
+      boroughGeo,
+      is3d,
+      selectedBorough,
+      setCacheProgress,
+    );
+
+    const onStyleLoad = () => {
+      configureBasemap(map);
+      attachBuildingLayers(map, boroughGeo, is3d, selectedBorough, setCacheProgress);
+    };
+    map.on("style.load", onStyleLoad);
+
+    return () => {
+      map.off("style.load", onStyleLoad);
+      detachBuildings();
+    };
+  }, [configureBasemap, boroughGeo, is3d, selectedBorough]);
+
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map || !boroughGeo || !is3d) return;
+    syncBuildingColors(map, boroughGeo, selectedBorough);
+  }, [boroughGeo, selectedBorough, is3d]);
 
   const onMapLoad = useCallback(
     (event: { target: MapboxMap }) => {
       const map = event.target;
       configureBasemap(map);
-      map.on("style.load", () => configureBasemap(map));
+      if (typeof map.setPixelRatio === "function") {
+        map.setPixelRatio(Math.min(typeof window !== "undefined" ? window.devicePixelRatio : 1, 2));
+      }
+      if (is3d) {
+        configure3dNavigation(map);
+        map.jumpTo({ pitch: camera.pitch, bearing: camera.bearing });
+      }
     },
-    [configureBasemap],
+    [configureBasemap, is3d, camera.pitch, camera.bearing],
   );
 
   if (!MAPBOX_TOKEN) {
@@ -297,9 +342,7 @@ export default function MapCanvas({
     );
   }
 
-  const boroughOpacity: mapboxgl.ExpressionSpecification = selectedBorough
-    ? ["case", ["==", ["get", "borough"], selectedBorough], 0.92, 0.22]
-    : 0.82;
+  const boroughOpacity = buildBoroughFillOpacity(is3d, selectedBorough);
 
   const interactiveLayers =
     showApplicationPoints && applications.length > 0
@@ -321,8 +364,10 @@ export default function MapCanvas({
       touchPitch={is3d}
       maxPitch={is3d ? 85 : 0}
       minPitch={0}
+      minZoom={is3d ? 9 : 8}
       style={{ width: "100%", height: "100%" }}
       mapStyle="mapbox://styles/mapbox/dark-v11"
+      antialias
       onLoad={onMapLoad}
       onClick={onClick}
       onMouseMove={onMouseMove}
@@ -331,19 +376,7 @@ export default function MapCanvas({
       cursor="default"
       attributionControl={false}
     >
-      <Source id="boroughs" type="geojson" data={boroughGeo} key={is3d ? "boroughs-3d" : "boroughs-2d"}>
-        <Layer
-          id="borough-extrusion"
-          type="fill-extrusion"
-          layout={{ visibility: is3d ? "visible" : "none" }}
-          paint={{
-            "fill-extrusion-color": ["get", "color"],
-            "fill-extrusion-height": ["get", "height"],
-            "fill-extrusion-base": 0,
-            "fill-extrusion-opacity": boroughOpacity,
-            "fill-extrusion-vertical-gradient": true,
-          }}
-        />
+      <Source id="boroughs" type="geojson" data={boroughGeo}>
         <Layer
           id="borough-fill"
           type="fill"
@@ -353,6 +386,33 @@ export default function MapCanvas({
             "fill-opacity": boroughOpacity,
           }}
         />
+        {is3d ? (
+          <Layer
+            id="borough-city-mass"
+            type="fill-extrusion"
+            paint={{
+              "fill-extrusion-color": ["get", "color"],
+              "fill-extrusion-height": ["get", "city_mass_height"],
+              "fill-extrusion-base": 0,
+              "fill-extrusion-opacity": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                8,
+                0.96,
+                11,
+                0.92,
+                13,
+                0.78,
+                14,
+                0.4,
+                15,
+                0,
+              ],
+              "fill-extrusion-vertical-gradient": false,
+            }}
+          />
+        ) : null}
         <Layer
           id="borough-outline"
           type="line"
@@ -500,6 +560,14 @@ export default function MapCanvas({
           <BoroughPopupContent record={boroughPopup.record} />
         </Popup>
       )}
+
+      {is3d ? (
+        <div className="map-buildings-hint map-buildings-hint-live" aria-live="polite">
+          {cacheProgress && cacheProgress.count > 0
+            ? `${cacheProgress.count.toLocaleString()} coloured buildings · pan to load more`
+            : "Coloured city blocks + buildings — pan/zoom to load detail"}
+        </div>
+      ) : null}
     </Map>
   );
 }
